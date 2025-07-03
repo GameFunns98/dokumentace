@@ -1,5 +1,6 @@
 import sys
-from PySide6 import QtWidgets, QtGui
+import requests
+from PySide6 import QtWidgets, QtGui, QtCore
 
 SECTIONS = ["OA", "RA", "PA", "SA", "FA", "AA", "EA", "NO", "VF", "Subj.", "Obj.", "Vyšetření", "Terapie"]
 
@@ -12,6 +13,30 @@ LOCALITY_PRICES = {
 
 HEAVY_TREATMENT_EXTRA = 150
 BASE_PRICE = 500
+
+MKN10_CACHE = None
+
+
+def fetch_mkn10_online(code: str) -> str | None:
+    """Return diagnosis description for the given MKN-10 code.
+
+    Data are fetched from an online repository on first use and cached
+    for subsequent lookups.
+    """
+    global MKN10_CACHE
+    url = (
+        "https://raw.githubusercontent.com/WhiteCoatAcademy/icd10/"
+        "master/code-parsing/diagnosis_children.json"
+    )
+    try:
+        if MKN10_CACHE is None:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            MKN10_CACHE = response.json()
+        return MKN10_CACHE.get(code.upper(), {}).get("d")
+    except Exception as exc:  # noqa: BLE001
+        print(f"Could not fetch MKN-10 description: {exc}")
+        return None
 
 class ReportGenerator(QtWidgets.QWidget):
     def __init__(self):
@@ -30,6 +55,7 @@ class ReportGenerator(QtWidgets.QWidget):
         self.diagnosis_edit = QtWidgets.QLineEdit()
         form.addRow("Diagnóza:", self.diagnosis_edit)
         self.mkn_edit = QtWidgets.QLineEdit()
+        self.mkn_edit.editingFinished.connect(self.lookup_mkn10)
         form.addRow("MKN-10:", self.mkn_edit)
         self.locality_combo = QtWidgets.QComboBox()
         self.locality_combo.addItems(list(LOCALITY_PRICES.keys()))
@@ -49,6 +75,20 @@ class ReportGenerator(QtWidgets.QWidget):
         self.theme_check = QtWidgets.QCheckBox("Tmavý režim")
         self.theme_check.toggled.connect(self.toggle_theme)
         layout.addWidget(self.theme_check)
+
+    def lookup_mkn10(self):
+        code = self.mkn_edit.text().strip()
+        if not code:
+            return
+        desc = fetch_mkn10_online(code)
+        if desc:
+            self.diagnosis_edit.setText(desc)
+        else:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "MKN-10",
+                "Nepodařilo se získat popis diagnózy."
+            )
 
     def toggle_theme(self, enabled):
         app = QtWidgets.QApplication.instance()

@@ -4,7 +4,8 @@ Tento repozitář obsahuje jednoduchý GUI nástroj **Generátor lékařské zpr
 
 ## Požadavky
 - Python 3.10+
-- PySide6
+ - PySide6
+ - requests
 
 ## Spuštění
 ```bash
