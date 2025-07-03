@@ -1,20 +1,32 @@
 # Dokumentace
 
-Tento repozitář obsahuje jednoduchý GUI nástroj **Generátor lékařské zprávy - Doctor-11** postavený na knihovně PySide6. Aplikace umožňuje vyplnit základní sekce lékařské zprávy, dopočítá celkovou cenu a po stisknutí tlačítka **Generovat zprávu** se vytvořený text automaticky zkopíruje do schránky.
+Tento repozitář obsahuje GUI nástroj **Generátor lékařské zprávy – Doctor‑11** postavený na knihovně PySide6. Formulář je rozdělen do několika skupin (anamnéza, status praesens, vyšetření, diagnóza a výstup). Aplikace automaticky dopočítá cenu zásahu podle zadaných parametrů a vygeneruje profesionální záznam připravený ke kopírování či uložení do TXT souboru.
 
-Po spuštění aplikace je možné přepnout vzhled pomocí zaškrtávacího políčka **Tmavý režim**. Tato volba okamžitě aplikuje tmavé barevné schéma na celou aplikaci.
+Po spuštění lze vzhled přepnout pomocí políčka **Tmavý režim**, které okamžitě změní barevné schéma.
 
 Krátká ukázka výsledného formátu zprávy:
 
 ```
-OA: subjekt udává obtíže
-PA: pacient popírá alergie
+🗂 Název dokumentu: Distorze kotníku – MKN-10: S93 – Lékařská zpráva
+🏷️ Tagy: #s93 #distorzekotniku #mesto
 
-MUDr. asistent – Fero Lakatos, Doctor-11 | Odznak: 97-5799
+💰 Cena za výkon: 2500 Kč
+
+**ZÁZNAM DO DOKUMENTACE**
+
+**Anamnéza**:
+OA: ...
+PA: ...
+
+**Vyšetření**: ...
+**Terapie**: ...
+
+**Zapsal**:
+MUDr. asistent – Fero Lakatos
+Doctor-11 | Odznak: 97-5799
 ```
 
-Od verze 2 aplikace obsahuje spinner pro volbu ceny lehkého ošetření.
-Hodnota lze nastavit v rozmezí 1000–1500 Kč, výchozí cena je 1250 Kč.
+Cena lehkého ošetření lze zvolit ve spinneru (1000–1500 Kč), těžší ošetření je možné přičíst jedním kliknutím.
 
 ## Požadavky
 - Python 3.10+
