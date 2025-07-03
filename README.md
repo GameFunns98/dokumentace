@@ -1,6 +1,17 @@
 # Dokumentace
 
-Tento repozitář obsahuje jednoduchý GUI nástroj **Generátor lékařské zprávy - Doctor-11** postavený na knihovně PySide6. Aplikace umožňuje vyplnit základní sekce lékařské zprávy, dopočítá celkovou cenu a výsledek uloží do schránky.
+Tento repozitář obsahuje jednoduchý GUI nástroj **Generátor lékařské zprávy - Doctor-11** postavený na knihovně PySide6. Aplikace umožňuje vyplnit základní sekce lékařské zprávy, dopočítá celkovou cenu a po stisknutí tlačítka **Generovat zprávu** se vytvořený text automaticky zkopíruje do schránky.
+
+Po spuštění aplikace je možné přepnout vzhled pomocí zaškrtávacího políčka **Tmavý režim**. Tato volba okamžitě aplikuje tmavé barevné schéma na celou aplikaci.
+
+Krátká ukázka výsledného formátu zprávy:
+
+```
+OA: subjekt udává obtíže
+PA: pacient popírá alergie
+
+MUDr. asistent – Fero Lakatos, Doctor-11 | Odznak: 97-5799
+```
 
 ## Požadavky
 - Python 3.10+
