@@ -23,7 +23,7 @@ SUGGESTION_RULES = [
 DATA_PATH = Path(__file__).resolve().parent / "data" / "diagnosis_children.json"
 
 
-class ReportGenerator(QtWidgets.QWidget):
+class ReportGenerator(QtWidgets.QTabWidget):
     def __init__(self) -> None:
         super().__init__()
         mkn10.load_mkn10_data(str(DATA_PATH))
@@ -40,12 +40,13 @@ class ReportGenerator(QtWidgets.QWidget):
 
     # -------------------- UI setup --------------------
     def init_ui(self) -> None:
-        main_layout = QtWidgets.QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        form_tab = QtWidgets.QWidget()
+        form_layout = QtWidgets.QVBoxLayout(form_tab)
+        form_layout.setContentsMargins(0, 0, 0, 0)
 
         scroll_area = QtWidgets.QScrollArea()
         scroll_area.setWidgetResizable(True)
-        main_layout.addWidget(scroll_area)
+        form_layout.addWidget(scroll_area)
 
         container = QtWidgets.QWidget()
         scroll_area.setWidget(container)
@@ -212,6 +213,43 @@ class ReportGenerator(QtWidgets.QWidget):
         output_layout.addLayout(buttons_layout)
         output_box.setLayout(output_layout)
         layout.addWidget(output_box)
+
+        self.addTab(form_tab, "Formulář")
+
+        # -------------------- Explanations tab --------------------
+        notes_tab = QtWidgets.QWidget()
+        notes_layout = QtWidgets.QVBoxLayout(notes_tab)
+        notes_text = QtWidgets.QTextEdit()
+        notes_text.setReadOnly(True)
+        notes_text.setHtml(
+            "<h2>Referenční hodnoty laboratorních výsledků</h2>"
+            "<ul>"
+            "<li>CRP: 0–5 mg/L</li>"
+            "<li>Glykémie: 3.9–7.0 mmol/L</li>"
+            "<li>Laktát: 0.5–2.0 mmol/L</li>"
+            "<li>pH: 7.35–7.45</li>"
+            "</ul>"
+            "<h2>Základní EKG nálezy</h2>"
+            "<ul>"
+            "<li>Tachykardie</li>"
+            "<li>Bradykardie</li>"
+            "<li>Fibrilace síní</li>"
+            "<li>STEMI</li>"
+            "</ul>"
+            "<h2>Zkratky</h2>"
+            "<ul>"
+            "<li>OA – osobní anamnéza</li>"
+            "<li>RA – rodinná anamnéza</li>"
+            "<li>PA – pracovní anamnéza</li>"
+            "<li>SA – sociální anamnéza</li>"
+            "<li>FA – farmakologická anamnéza</li>"
+            "<li>AA – alergologická anamnéza</li>"
+            "<li>EA – epidemiologická anamnéza</li>"
+            "<li>NO – nynější onemocnění</li>"
+            "</ul>"
+        )
+        notes_layout.addWidget(notes_text)
+        self.addTab(notes_tab, "Vysvětlivky")
 
     # -------------------- Utility helpers --------------------
     def lookup_mkn10(self) -> None:
