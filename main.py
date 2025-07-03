@@ -1,61 +1,36 @@
+from __future__ import annotations
+
 import sys
-import requests
+from pathlib import Path
+
 from PySide6 import QtWidgets, QtGui, QtCore
 
-# Individual sections grouped for the form layout
+import mkn10
+import pricing
+import report_generator
+import theme
+
 ANAM_SECTIONS = ["OA", "RA", "PA", "SA", "FA", "AA", "EA", "NO"]
 STATUS_SECTIONS = ["VF", "Subj.", "Obj."]
 EXAM_SECTIONS = ["Vyšetření", "Terapie"]
 
-# Pricing constants according to EMS pricelist
-LOCALITY_PRICES = {
-    "Nemocnice": 1000,
-    "Město": 1500,
-    "Mimo město": 2000,
-    "Těžko přístupný terén": 4000,
-}
+DATA_PATH = Path(__file__).resolve().parent / "data" / "diagnosis_children.json"
 
-HEAVY_TREATMENT_EXTRA = 2000
-# Default price for light treatment. The recommended range is
-# 1000–1500 Kč. A spin box in the UI allows choosing a value
-# within this range and falls back to this default if unchanged.
-TREATMENT_LIGHT_MIN = 1000
-TREATMENT_LIGHT_MAX = 1500
-TREATMENT_LIGHT = 1250
-
-MKN10_CACHE = None
-
-
-def fetch_mkn10_online(code: str) -> str | None:
-    """Return diagnosis description for the given MKN-10 code.
-
-    Data are fetched from an online repository on first use and cached
-    for subsequent lookups.
-    """
-    global MKN10_CACHE
-    url = (
-        "https://raw.githubusercontent.com/WhiteCoatAcademy/icd10/"
-        "master/code-parsing/diagnosis_children.json"
-    )
-    try:
-        if MKN10_CACHE is None:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            MKN10_CACHE = response.json()
-        return MKN10_CACHE.get(code.upper(), {}).get("d")
-    except Exception as exc:  # noqa: BLE001
-        print(f"Could not fetch MKN-10 description: {exc}")
-        return None
 
 class ReportGenerator(QtWidgets.QWidget):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
+        mkn10.load_mkn10_data(str(DATA_PATH))
+
         self.setWindowTitle("Generátor lékařské zprávy - Doctor-11")
         self.setMinimumSize(600, 700)
-        self.fields = {}
+        self.fields: dict[str, QtWidgets.QTextEdit] = {}
+        self.diagnostic_checks: dict[str, QtWidgets.QCheckBox] = {}
         self.init_ui()
+        self.update_price()
 
-    def init_ui(self):
+    # -------------------- UI setup --------------------
+    def init_ui(self) -> None:
         main_layout = QtWidgets.QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -72,8 +47,6 @@ class ReportGenerator(QtWidgets.QWidget):
         # -------------------- Anamnesis --------------------
         anam_box = QtWidgets.QGroupBox("Anamnéza")
         anam_form = QtWidgets.QFormLayout()
-        anam_form.setContentsMargins(10, 10, 10, 10)
-        anam_form.setSpacing(8)
         for section in ANAM_SECTIONS:
             text = QtWidgets.QTextEdit()
             text.setMinimumHeight(60)
@@ -85,8 +58,6 @@ class ReportGenerator(QtWidgets.QWidget):
         # -------------------- Status praesens --------------------
         status_box = QtWidgets.QGroupBox("Status praesens")
         status_form = QtWidgets.QFormLayout()
-        status_form.setContentsMargins(10, 10, 10, 10)
-        status_form.setSpacing(8)
         for section in STATUS_SECTIONS:
             text = QtWidgets.QTextEdit()
             text.setMinimumHeight(60)
@@ -98,8 +69,6 @@ class ReportGenerator(QtWidgets.QWidget):
         # -------------------- Examination & Therapy --------------------
         exam_box = QtWidgets.QGroupBox("Vyšetření & Terapie")
         exam_form = QtWidgets.QFormLayout()
-        exam_form.setContentsMargins(10, 10, 10, 10)
-        exam_form.setSpacing(8)
         for section in EXAM_SECTIONS:
             text = QtWidgets.QTextEdit()
             text.setMinimumHeight(60)
@@ -111,25 +80,38 @@ class ReportGenerator(QtWidgets.QWidget):
         # -------------------- Diagnosis and locality --------------------
         diag_box = QtWidgets.QGroupBox("Diagnóza & Lokalita zásahu")
         diag_form = QtWidgets.QFormLayout()
-        diag_form.setContentsMargins(10, 10, 10, 10)
-        diag_form.setSpacing(8)
         self.diagnosis_edit = QtWidgets.QLineEdit()
         diag_form.addRow("Diagnóza:", self.diagnosis_edit)
         self.mkn_edit = QtWidgets.QLineEdit()
         self.mkn_edit.editingFinished.connect(self.lookup_mkn10)
+        completer = QtWidgets.QCompleter(mkn10.get_all_codes())
+        completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        self.mkn_edit.setCompleter(completer)
+        completer.activated.connect(self.lookup_mkn10)
         diag_form.addRow("MKN-10:", self.mkn_edit)
         self.locality_combo = QtWidgets.QComboBox()
-        self.locality_combo.addItems(list(LOCALITY_PRICES.keys()))
+        self.locality_combo.addItems(list(pricing.LOCALITY_PRICES.keys()))
         self.locality_combo.currentIndexChanged.connect(self.update_price)
         diag_form.addRow("Lokalita:", self.locality_combo)
         self.treatment_spin = QtWidgets.QSpinBox()
-        self.treatment_spin.setRange(TREATMENT_LIGHT_MIN, TREATMENT_LIGHT_MAX)
-        self.treatment_spin.setValue(TREATMENT_LIGHT)
+        self.treatment_spin.setRange(1000, 1500)
+        self.treatment_spin.setValue(1250)
         self.treatment_spin.valueChanged.connect(self.update_price)
         diag_form.addRow("Cena lehkého ošetření:", self.treatment_spin)
         self.heavy_check = QtWidgets.QCheckBox("Těžší ošetření (včetně bezvědomí)")
         self.heavy_check.toggled.connect(self.update_price)
         diag_form.addRow(self.heavy_check)
+
+        diag_group = QtWidgets.QGroupBox("Diagnostika")
+        diag_layout = QtWidgets.QHBoxLayout()
+        for name in pricing.DIAGNOSTIC_PRICES:
+            chk = QtWidgets.QCheckBox(name)
+            chk.toggled.connect(self.update_price)
+            self.diagnostic_checks[name] = chk
+            diag_layout.addWidget(chk)
+        diag_group.setLayout(diag_layout)
+        diag_form.addRow(diag_group)
+
         self.price_label = QtWidgets.QLabel("Cena: 0 Kč")
         diag_form.addRow("Celková cena:", self.price_label)
         diag_box.setLayout(diag_form)
@@ -138,8 +120,6 @@ class ReportGenerator(QtWidgets.QWidget):
         # -------------------- Output & actions --------------------
         output_box = QtWidgets.QGroupBox("Výstup & Akce")
         output_layout = QtWidgets.QVBoxLayout()
-        output_layout.setContentsMargins(10, 10, 10, 10)
-        output_layout.setSpacing(8)
         self.result_box = QtWidgets.QTextEdit()
         self.result_box.setReadOnly(True)
         self.result_box.setMinimumHeight(60)
@@ -162,108 +142,79 @@ class ReportGenerator(QtWidgets.QWidget):
         output_box.setLayout(output_layout)
         layout.addWidget(output_box)
 
-    def lookup_mkn10(self):
+    # -------------------- Utility helpers --------------------
+    def lookup_mkn10(self) -> None:
         code = self.mkn_edit.text().strip()
         if not code:
             return
-        desc = fetch_mkn10_online(code)
+        desc = mkn10.get_description(code)
         if desc:
             self.diagnosis_edit.setText(desc)
         else:
-            QtWidgets.QMessageBox.warning(
-                self,
-                "MKN-10",
-                "Nepodařilo se získat popis diagnózy."
-            )
+            QtWidgets.QMessageBox.warning(self, "MKN-10", "Nepodařilo se najít popis diagnózy.")
 
-    def toggle_theme(self, enabled):
+    def toggle_theme(self, enabled: bool) -> None:
         app = QtWidgets.QApplication.instance()
-        palette = app.palette()
         if enabled:
-            palette.setColor(QtGui.QPalette.Window, QtGui.QColor(53, 53, 53))
-            palette.setColor(QtGui.QPalette.WindowText, QtGui.QColor("white"))
-            palette.setColor(QtGui.QPalette.Base, QtGui.QColor(35, 35, 35))
-            palette.setColor(QtGui.QPalette.Text, QtGui.QColor("white"))
+            theme.apply_dark_theme(app)
         else:
-            palette = QtGui.QPalette()
-        app.setPalette(palette)
+            theme.apply_light_theme(app)
 
-    # -------------------- Utility helpers --------------------
     def update_price(self) -> int:
-        """Calculate and display the total price."""
-        price = (
-            self.treatment_spin.value()
-            + LOCALITY_PRICES[self.locality_combo.currentText()]
+        diagnostics = [name for name, chk in self.diagnostic_checks.items() if chk.isChecked()]
+        price = pricing.calculate_price(
+            self.locality_combo.currentText(),
+            self.treatment_spin.value(),
+            self.heavy_check.isChecked(),
+            diagnostics,
         )
-        if self.heavy_check.isChecked():
-            price += HEAVY_TREATMENT_EXTRA
         self.price_label.setText(f"Cena: {price} Kč")
         return price
 
     def copy_report(self) -> None:
-        """Copy the generated report to clipboard."""
         QtGui.QGuiApplication.clipboard().setText(self.result_box.toPlainText())
 
     def export_report(self) -> None:
-        """Save the report to a text file."""
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, "Uložit zprávu", filter="Text files (*.txt)"
-        )
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Uložit zprávu", filter="Text files (*.txt)")
         if not path:
             return
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(self.result_box.toPlainText())
 
     def generate_tags(self, mkn: str, diagnosis: str, locality: str) -> list[str]:
-        """Return list of lower-case tags without spaces."""
         return [
             mkn.lower(),
             diagnosis.replace(" ", "").lower(),
             locality.replace(" ", "").lower(),
         ]
 
-    def generate_report(self):
+    def generate_report(self) -> None:
         diag = self.diagnosis_edit.text().strip()
         mkn = self.mkn_edit.text().strip()
         locality = self.locality_combo.currentText()
 
         price = self.update_price()
-        tags = " ".join(f"#{t}" for t in self.generate_tags(mkn, diag, locality))
+        tags = self.generate_tags(mkn, diag, locality)
 
-        lines = [
-            f"🗂 Název dokumentu: {diag} – MKN-10: {mkn} – Lékařská zpráva",
-            f"🏷️ Tagy: {tags}",
-            f"💰 Cena za výkon: {price} Kč",
-            "",
-            "**ZÁZNAM DO DOKUMENTACE**",
-            "",
-            "**Anamnéza**:",
-        ]
-        for section in ANAM_SECTIONS:
-            text = self.fields[section].toPlainText().strip() or "..."
-            lines.append(f"{section}: {text}")
+        anam = {sec: self.fields[sec].toPlainText().strip() or "..." for sec in ANAM_SECTIONS}
+        status = {sec: self.fields[sec].toPlainText().strip() or "..." for sec in STATUS_SECTIONS}
+        examination = self.fields[EXAM_SECTIONS[0]].toPlainText().strip() or "..."
+        therapy = self.fields[EXAM_SECTIONS[1]].toPlainText().strip() or "..."
 
-        lines.append("")
-        lines.append("**Status praesens**:")
-        for section in STATUS_SECTIONS:
-            text = self.fields[section].toPlainText().strip() or "..."
-            lines.append(f"{section}: {text}")
-
-        lines.append("")
-        for section in EXAM_SECTIONS:
-            text = self.fields[section].toPlainText().strip() or "..."
-            lines.append(f"**{section}**: {text}")
-
-        lines.extend([
-            "",
-            "**Zapsal**:",
-            "MUDr. asistent – Fero Lakatos",
-            "Doctor-11 | Odznak: 97-5799",
-        ])
-
-        report = "\n".join(lines)
+        data = {
+            "diagnosis": diag,
+            "mkn": mkn,
+            "tags": tags,
+            "price": price,
+            "anamnesis": anam,
+            "status": status,
+            "examination": examination,
+            "therapy": therapy,
+        }
+        report = report_generator.generate_report(data)
         self.result_box.setPlainText(report)
         self.copy_report()
+
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
