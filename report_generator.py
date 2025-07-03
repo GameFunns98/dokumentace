@@ -18,6 +18,16 @@ def generate_report(data: dict) -> str:
     for key, text in data.get('status', {}).items():
         lines.append(f"{key}: {text or '...'}")
 
+    vitals = data.get('vitals')
+    if vitals:
+        lines.append("")
+        lines.append("__Vitální funkce__:")
+        for key, val in vitals.get('values', {}).items():
+            lines.append(f"{key}: {val}")
+        desc = vitals.get('desc')
+        if desc:
+            lines.append(desc)
+
     lines.append("")
     lines.append(f"**Vyšetření**: {data.get('examination') or '...'}")
     lines.append(f"**Terapie**: {data.get('therapy') or '...'}")
