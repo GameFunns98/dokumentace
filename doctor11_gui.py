@@ -51,17 +51,32 @@ class ReportGenerator(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Generátor lékařské zprávy - Doctor-11")
+        self.setMinimumSize(600, 700)
         self.fields = {}
         self.init_ui()
 
     def init_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
+        main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll_area = QtWidgets.QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        main_layout.addWidget(scroll_area)
+
+        container = QtWidgets.QWidget()
+        scroll_area.setWidget(container)
+        layout = QtWidgets.QVBoxLayout(container)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
 
         # -------------------- Anamnesis --------------------
         anam_box = QtWidgets.QGroupBox("Anamnéza")
         anam_form = QtWidgets.QFormLayout()
+        anam_form.setContentsMargins(10, 10, 10, 10)
+        anam_form.setSpacing(8)
         for section in ANAM_SECTIONS:
             text = QtWidgets.QTextEdit()
+            text.setMinimumHeight(60)
             self.fields[section] = text
             anam_form.addRow(section + ":", text)
         anam_box.setLayout(anam_form)
@@ -70,8 +85,11 @@ class ReportGenerator(QtWidgets.QWidget):
         # -------------------- Status praesens --------------------
         status_box = QtWidgets.QGroupBox("Status praesens")
         status_form = QtWidgets.QFormLayout()
+        status_form.setContentsMargins(10, 10, 10, 10)
+        status_form.setSpacing(8)
         for section in STATUS_SECTIONS:
             text = QtWidgets.QTextEdit()
+            text.setMinimumHeight(60)
             self.fields[section] = text
             status_form.addRow(section + ":", text)
         status_box.setLayout(status_form)
@@ -80,8 +98,11 @@ class ReportGenerator(QtWidgets.QWidget):
         # -------------------- Examination & Therapy --------------------
         exam_box = QtWidgets.QGroupBox("Vyšetření & Terapie")
         exam_form = QtWidgets.QFormLayout()
+        exam_form.setContentsMargins(10, 10, 10, 10)
+        exam_form.setSpacing(8)
         for section in EXAM_SECTIONS:
             text = QtWidgets.QTextEdit()
+            text.setMinimumHeight(60)
             self.fields[section] = text
             exam_form.addRow(section + ":", text)
         exam_box.setLayout(exam_form)
@@ -90,6 +111,8 @@ class ReportGenerator(QtWidgets.QWidget):
         # -------------------- Diagnosis and locality --------------------
         diag_box = QtWidgets.QGroupBox("Diagnóza & Lokalita zásahu")
         diag_form = QtWidgets.QFormLayout()
+        diag_form.setContentsMargins(10, 10, 10, 10)
+        diag_form.setSpacing(8)
         self.diagnosis_edit = QtWidgets.QLineEdit()
         diag_form.addRow("Diagnóza:", self.diagnosis_edit)
         self.mkn_edit = QtWidgets.QLineEdit()
@@ -115,8 +138,11 @@ class ReportGenerator(QtWidgets.QWidget):
         # -------------------- Output & actions --------------------
         output_box = QtWidgets.QGroupBox("Výstup & Akce")
         output_layout = QtWidgets.QVBoxLayout()
+        output_layout.setContentsMargins(10, 10, 10, 10)
+        output_layout.setSpacing(8)
         self.result_box = QtWidgets.QTextEdit()
         self.result_box.setReadOnly(True)
+        self.result_box.setMinimumHeight(60)
         output_layout.addWidget(self.result_box)
 
         buttons_layout = QtWidgets.QHBoxLayout()
