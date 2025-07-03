@@ -18,7 +18,8 @@ Hodnota lze nastavit v rozmezí 1000–1500 Kč, výchozí cena je 1250 Kč.
 
 ## Požadavky
 - Python 3.10+
-- PySide6
+ - PySide6
+ - requests
 
 ## Spuštění
 ```bash
