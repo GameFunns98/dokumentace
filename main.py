@@ -14,6 +14,12 @@ ANAM_SECTIONS = ["OA", "RA", "PA", "SA", "FA", "AA", "EA", "NO"]
 STATUS_SECTIONS = ["VF", "Subj.", "Obj."]
 EXAM_SECTIONS = ["Vyšetření", "Terapie"]
 
+# simple keyword based suggestions for NO field -> (keywords, code, description)
+SUGGESTION_RULES = [
+    (("slabost", "řeč"), "I63", "CMP"),
+    (("bolest břicha",), "R10", "Bolest břicha"),
+]
+
 DATA_PATH = Path(__file__).resolve().parent / "data" / "diagnosis_children.json"
 
 
@@ -26,6 +32,9 @@ class ReportGenerator(QtWidgets.QWidget):
         self.setMinimumSize(600, 700)
         self.fields: dict[str, QtWidgets.QTextEdit] = {}
         self.diagnostic_checks: dict[str, QtWidgets.QCheckBox] = {}
+        self.current_tox_therapy = ""
+        self.suggested_code = ""
+        self.suggested_desc = ""
         self.init_ui()
         self.update_price()
 
@@ -51,6 +60,8 @@ class ReportGenerator(QtWidgets.QWidget):
             text = QtWidgets.QTextEdit()
             text.setMinimumHeight(60)
             self.fields[section] = text
+            if section == "NO":
+                text.textChanged.connect(self.analyze_no)
             anam_form.addRow(section + ":", text)
         anam_box.setLayout(anam_form)
         layout.addWidget(anam_box)
@@ -77,6 +88,60 @@ class ReportGenerator(QtWidgets.QWidget):
         exam_box.setLayout(exam_form)
         layout.addWidget(exam_box)
 
+        # -------------------- Laboratory results --------------------
+        lab_box = QtWidgets.QGroupBox("Laboratorní hodnoty")
+        lab_form = QtWidgets.QFormLayout()
+        self.crp_edit = QtWidgets.QLineEdit()
+        self.crp_edit.textChanged.connect(self.update_lab_interpretation)
+        lab_form.addRow("CRP (mg/L):", self.crp_edit)
+        self.glucose_edit = QtWidgets.QLineEdit()
+        self.glucose_edit.textChanged.connect(self.update_lab_interpretation)
+        lab_form.addRow("Glykémie (mmol/L):", self.glucose_edit)
+        self.lactate_edit = QtWidgets.QLineEdit()
+        self.lactate_edit.textChanged.connect(self.update_lab_interpretation)
+        lab_form.addRow("Laktát (mmol/L):", self.lactate_edit)
+        self.ph_edit = QtWidgets.QLineEdit()
+        self.ph_edit.textChanged.connect(self.update_lab_interpretation)
+        lab_form.addRow("pH:", self.ph_edit)
+        self.lab_interpret_label = QtWidgets.QLabel()
+        lab_form.addRow(self.lab_interpret_label)
+        lab_box.setLayout(lab_form)
+        layout.addWidget(lab_box)
+
+        # -------------------- Toxicology --------------------
+        tox_box = QtWidgets.QGroupBox("Toxikologie")
+        tox_form = QtWidgets.QFormLayout()
+        self.tox_substance = QtWidgets.QComboBox()
+        self.tox_substance.setEditable(True)
+        self.tox_substance.addItems(["alkohol", "benzo", "opioid", "CO", "pesticidy"])
+        self.tox_substance.editTextChanged.connect(self.update_toxicology_interpretation)
+        self.tox_substance.currentTextChanged.connect(self.update_toxicology_interpretation)
+        tox_form.addRow("Látka:", self.tox_substance)
+        self.tox_dose = QtWidgets.QLineEdit()
+        self.tox_dose.textChanged.connect(self.update_toxicology_interpretation)
+        tox_form.addRow("Odhadovaná dávka:", self.tox_dose)
+        self.tox_time = QtWidgets.QLineEdit()
+        self.tox_time.textChanged.connect(self.update_toxicology_interpretation)
+        tox_form.addRow("Čas expozice (HH:MM):", self.tox_time)
+        self.tox_route = QtWidgets.QComboBox()
+        self.tox_route.addItems(["per os", "inhalace", "i.v.", "neznámý"])
+        self.tox_route.currentTextChanged.connect(self.update_toxicology_interpretation)
+        tox_form.addRow("Způsob expozice:", self.tox_route)
+        self.tox_symptoms = QtWidgets.QTextEdit()
+        self.tox_symptoms.setMinimumHeight(60)
+        self.tox_symptoms.textChanged.connect(self.update_toxicology_interpretation)
+        tox_form.addRow("Klinické příznaky:", self.tox_symptoms)
+        self.tox_interpret_label = QtWidgets.QLabel()
+        self.tox_therapy_label = QtWidgets.QLabel()
+        self.tox_therapy_label.setWordWrap(True)
+        tox_form.addRow(self.tox_interpret_label)
+        tox_form.addRow("Doporučená terapie:", self.tox_therapy_label)
+        self.tox_add_button = QtWidgets.QPushButton("Přidat do terapie")
+        self.tox_add_button.clicked.connect(self.add_tox_therapy)
+        tox_form.addRow(self.tox_add_button)
+        tox_box.setLayout(tox_form)
+        layout.addWidget(tox_box)
+
         # -------------------- Diagnosis and locality --------------------
         diag_box = QtWidgets.QGroupBox("Diagnóza & Lokalita zásahu")
         diag_form = QtWidgets.QFormLayout()
@@ -89,6 +154,12 @@ class ReportGenerator(QtWidgets.QWidget):
         self.mkn_edit.setCompleter(completer)
         completer.activated.connect(self.lookup_mkn10)
         diag_form.addRow("MKN-10:", self.mkn_edit)
+        self.suggest_label = QtWidgets.QLabel()
+        self.suggest_button = QtWidgets.QPushButton("Použít návrh")
+        self.suggest_button.clicked.connect(self.apply_diag_suggestion)
+        self.suggest_label.hide()
+        self.suggest_button.hide()
+        diag_form.addRow(self.suggest_label, self.suggest_button)
         self.locality_combo = QtWidgets.QComboBox()
         self.locality_combo.addItems(list(pricing.LOCALITY_PRICES.keys()))
         self.locality_combo.currentIndexChanged.connect(self.update_price)
@@ -159,6 +230,99 @@ class ReportGenerator(QtWidgets.QWidget):
             theme.apply_dark_theme(app)
         else:
             theme.apply_light_theme(app)
+
+    # -------------------- Intelligent helpers --------------------
+    def analyze_no(self) -> None:
+        text = self.fields["NO"].toPlainText().lower()
+        suggestion = None
+        for keywords, code, desc in SUGGESTION_RULES:
+            if all(k in text for k in keywords):
+                suggestion = (code, desc)
+                break
+        if suggestion:
+            self.suggested_code, self.suggested_desc = suggestion
+            self.suggest_label.setText(f"Návrh diagnózy: {suggestion[0]} – {suggestion[1]}")
+            self.suggest_label.show()
+            self.suggest_button.show()
+        else:
+            self.suggest_label.hide()
+            self.suggest_button.hide()
+
+    def apply_diag_suggestion(self) -> None:
+        if self.suggested_code:
+            self.mkn_edit.setText(self.suggested_code)
+            self.diagnosis_edit.setText(self.suggested_desc)
+        self.suggest_label.hide()
+        self.suggest_button.hide()
+
+    def update_lab_interpretation(self) -> None:
+        msgs: list[str] = []
+        try:
+            crp = float(self.crp_edit.text().replace(",", "."))
+            if crp > 5:
+                msgs.append("Zvýšené CRP – známka zánětu")
+        except ValueError:
+            pass
+        try:
+            gly = float(self.glucose_edit.text().replace(",", "."))
+            if gly < 3.9:
+                msgs.append("Hypoglykémie")
+            elif gly > 7.0:
+                msgs.append("Hyperglykémie")
+        except ValueError:
+            pass
+        try:
+            lac = float(self.lactate_edit.text().replace(",", "."))
+            if lac > 2.0:
+                msgs.append("Laktátová acidóza")
+        except ValueError:
+            pass
+        try:
+            ph_val = float(self.ph_edit.text().replace(",", "."))
+            if ph_val < 7.35:
+                msgs.append("Acidóza")
+            elif ph_val > 7.45:
+                msgs.append("Alkalóza")
+        except ValueError:
+            pass
+        self.lab_interpret_label.setText("; ".join(msgs))
+
+    def update_toxicology_interpretation(self) -> None:
+        substance = self.tox_substance.currentText().lower()
+        symptoms = self.tox_symptoms.toPlainText().lower()
+        dose_text = self.tox_dose.text().replace(",", ".")
+        dose_val = None
+        try:
+            dose_val = float("".join(ch for ch in dose_text if ch.isdigit() or ch == "."))
+        except ValueError:
+            pass
+
+        msgs: list[str] = []
+        therapy: list[str] = []
+        if "opioid" in substance and ("mioz" in symptoms or "poruch" in symptoms):
+            msgs.append("Podezření na opioidní intoxikaci – zvážit podání Naloxonu")
+            therapy.append("Naloxon")
+        if "alkohol" in substance and dose_val is not None and dose_val > 3:
+            msgs.append("Závažná etanolová intoxikace – monitorace, glukóza, thiamin, hydratace")
+            therapy.append("monitorace, glukóza, thiamin, hydratace")
+        if "co" == substance or substance.startswith("co "):
+            msgs.append("Zvážit hyperbarickou komoru, 100% kyslík")
+            therapy.append("hyperbarická komora, 100% kyslík")
+
+        base = ["výplach žaludku (do 1h)", "aktivní uhlí 1g/kg", "antidota (naloxon, flumazenil, NAC...)"]
+        therapy.extend(base)
+
+        self.tox_interpret_label.setText("; ".join(msgs))
+        self.current_tox_therapy = "\n".join(therapy)
+        self.tox_therapy_label.setText(self.current_tox_therapy)
+
+    def add_tox_therapy(self) -> None:
+        if not self.current_tox_therapy:
+            return
+        current = self.fields[EXAM_SECTIONS[1]].toPlainText()
+        if current and not current.endswith("\n"):
+            current += "\n"
+        self.fields[EXAM_SECTIONS[1]].setPlainText(current + self.current_tox_therapy)
 
     def update_price(self) -> int:
         diagnostics = [name for name, chk in self.diagnostic_checks.items() if chk.isChecked()]
