@@ -3,6 +3,8 @@
 Tento repozitář obsahuje GUI nástroj **Generátor lékařské zprávy – Doctor‑11** postavený na knihovně PySide6. Formulář je rozdělen do několika skupin (anamnéza, status praesens, vyšetření, diagnóza a výstup). Aplikace automaticky dopočítá cenu zásahu podle zadaných parametrů a vygeneruje profesionální záznam připravený ke kopírování či uložení do TXT souboru.
 Diagnózy MKN‑10 jsou načítány z lokálního JSON souboru `data/diagnosis_children.json`, takže aplikace funguje i bez internetu.
 
+Při generování zprávy se navíc automaticky doplní výchozí texty do prázdných polí anamnézy, takže výstup je vždy formálně kompletní.
+
 Po spuštění lze vzhled přepnout pomocí políčka **Tmavý režim**, které okamžitě změní barevné schéma.
 
 Krátká ukázka výsledného formátu zprávy:
@@ -16,8 +18,8 @@ Krátká ukázka výsledného formátu zprávy:
 **ZÁZNAM DO DOKUMENTACE**
 
 **Anamnéza**:
-OA: ...
-PA: ...
+OA: Bez závažné osobní anamnézy.
+PA: Pracovní anamnéza nevýznamná.
 
 **Vyšetření**: ...
 **Terapie**: ...

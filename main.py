@@ -11,6 +11,17 @@ import report_generator
 import theme
 
 ANAM_SECTIONS = ["OA", "RA", "PA", "SA", "FA", "AA", "EA", "NO"]
+# default texts for anamnesis sections if left empty by the user
+ANAM_DEFAULTS = {
+    "OA": "Bez závažné osobní anamnézy.",
+    "RA": "Rodinná anamnéza bez významných odchylek.",
+    "PA": "Pracovní anamnéza nevýznamná.",
+    "SA": "Sociální anamnéza standardní.",
+    "FA": "Dlouhodobě bez pravidelné medikace.",
+    "AA": "Bez známé alergie.",
+    "EA": "Epidemiologická anamnéza negativní.",
+    "NO": "Bez aktuálních potíží.",
+}
 STATUS_SECTIONS = ["VF", "Subj.", "Obj."]
 EXAM_SECTIONS = ["Vyšetření", "Terapie"]
 
@@ -398,7 +409,10 @@ class ReportGenerator(QtWidgets.QTabWidget):
         price = self.update_price()
         tags = self.generate_tags(mkn, diag, locality)
 
-        anam = {sec: self.fields[sec].toPlainText().strip() or "..." for sec in ANAM_SECTIONS}
+        anam = {
+            sec: self.fields[sec].toPlainText().strip() or ANAM_DEFAULTS[sec]
+            for sec in ANAM_SECTIONS
+        }
         status = {sec: self.fields[sec].toPlainText().strip() or "..." for sec in STATUS_SECTIONS}
         examination = self.fields[EXAM_SECTIONS[0]].toPlainText().strip() or "..."
         therapy = self.fields[EXAM_SECTIONS[1]].toPlainText().strip() or "..."
