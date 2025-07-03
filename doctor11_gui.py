@@ -13,6 +13,12 @@ LOCALITY_PRICES = {
 
 HEAVY_TREATMENT_EXTRA = 150
 BASE_PRICE = 500
+# Default price for light treatment. The recommended range is
+# 1000–1500 Kč. A spin box in the UI allows choosing a value
+# within this range and falls back to this default if unchanged.
+TREATMENT_LIGHT_MIN = 1000
+TREATMENT_LIGHT_MAX = 1500
+TREATMENT_LIGHT = 1250
 
 MKN10_CACHE = None
 
@@ -60,6 +66,10 @@ class ReportGenerator(QtWidgets.QWidget):
         self.locality_combo = QtWidgets.QComboBox()
         self.locality_combo.addItems(list(LOCALITY_PRICES.keys()))
         form.addRow("Lokalita:", self.locality_combo)
+        self.treatment_spin = QtWidgets.QSpinBox()
+        self.treatment_spin.setRange(TREATMENT_LIGHT_MIN, TREATMENT_LIGHT_MAX)
+        self.treatment_spin.setValue(TREATMENT_LIGHT)
+        form.addRow("Cena lehkého ošetření:", self.treatment_spin)
         self.heavy_check = QtWidgets.QCheckBox("Těžší ošetření (včetně bezvědomí)")
         form.addRow(self.heavy_check)
         layout.addLayout(form)
@@ -118,7 +128,11 @@ class ReportGenerator(QtWidgets.QWidget):
         report += "\n\n" + "MUDr. asistent – Fero Lakatos, Doctor-11 | Odznak: 97-5799"
         self.result_box.setPlainText(report)
         QtGui.QGuiApplication.clipboard().setText(report)
-        price = BASE_PRICE + LOCALITY_PRICES[self.locality_combo.currentText()]
+        price = (
+            BASE_PRICE
+            + self.treatment_spin.value()
+            + LOCALITY_PRICES[self.locality_combo.currentText()]
+        )
         if self.heavy_check.isChecked():
             price += HEAVY_TREATMENT_EXTRA
         self.price_label.setText(f"Cena: {price} Kč")
