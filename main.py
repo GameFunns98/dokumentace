@@ -22,12 +22,14 @@ ANAM_DEFAULTS = {
     "EA": "Epidemiologická anamnéza negativní.",
     "NO": "Bez aktuálních potíží.",
 }
-STATUS_SECTIONS = ["VF", "Subj.", "Obj."]
+STATUS_SECTIONS = ["Subj.", "Obj."]
+VITAL_KEYS = ["TK", "TF", "SpO2", "TT", "RF", "GCS"]
 EXAM_SECTIONS = ["Vyšetření", "Terapie"]
 
 # simple keyword based suggestions for NO field -> (keywords, code, description)
 SUGGESTION_RULES = [
-    (("slabost", "řeč"), "I63", "CMP"),
+    (("slabost", "ztr\u00e1ta řeči"), "I63", "CMP"),
+    (("jednostrann\u00e1 slabost",), "I63", "CMP"),
     (("bolest břicha",), "R10", "Bolest břicha"),
 ]
 
@@ -43,9 +45,11 @@ class ReportGenerator(QtWidgets.QTabWidget):
         self.setMinimumSize(600, 700)
         self.fields: dict[str, QtWidgets.QTextEdit] = {}
         self.diagnostic_checks: dict[str, QtWidgets.QCheckBox] = {}
+        self.device_checks: dict[str, QtWidgets.QCheckBox] = {}
         self.current_tox_therapy = ""
         self.suggested_code = ""
         self.suggested_desc = ""
+        self.current_vital_desc = ""
         self.init_ui()
         self.update_price()
 
@@ -89,6 +93,69 @@ class ReportGenerator(QtWidgets.QTabWidget):
         status_box.setLayout(status_form)
         layout.addWidget(status_box)
 
+        # -------------------- Vital signs --------------------
+        vital_box = QtWidgets.QGroupBox("Vitální funkce")
+        vital_form = QtWidgets.QFormLayout()
+        bp_layout = QtWidgets.QHBoxLayout()
+        self.bp_sys_edit = QtWidgets.QLineEdit()
+        self.bp_dia_edit = QtWidgets.QLineEdit()
+        self.bp_sys_edit.textChanged.connect(self.update_vitals_interpretation)
+        self.bp_dia_edit.textChanged.connect(self.update_vitals_interpretation)
+        bp_layout.addWidget(self.bp_sys_edit)
+        bp_layout.addWidget(QtWidgets.QLabel("/"))
+        bp_layout.addWidget(self.bp_dia_edit)
+        bp_widget = QtWidgets.QWidget()
+        bp_widget.setLayout(bp_layout)
+        vital_form.addRow("TK (mmHg):", bp_widget)
+
+        self.hr_edit = QtWidgets.QLineEdit()
+        self.hr_edit.textChanged.connect(self.update_vitals_interpretation)
+        vital_form.addRow("TF (/min):", self.hr_edit)
+
+        self.spo2_edit = QtWidgets.QLineEdit()
+        self.spo2_edit.textChanged.connect(self.update_vitals_interpretation)
+        vital_form.addRow("SpO2 (%):", self.spo2_edit)
+
+        self.temp_edit = QtWidgets.QLineEdit()
+        self.temp_edit.textChanged.connect(self.update_vitals_interpretation)
+        vital_form.addRow("TT (°C):", self.temp_edit)
+
+        self.resp_edit = QtWidgets.QLineEdit()
+        self.resp_edit.textChanged.connect(self.update_vitals_interpretation)
+        vital_form.addRow("RF (/min):", self.resp_edit)
+
+        self.gcs_spin = QtWidgets.QSpinBox()
+        self.gcs_spin.setRange(3, 15)
+        self.gcs_spin.valueChanged.connect(self.update_vitals_interpretation)
+        vital_form.addRow("GCS:", self.gcs_spin)
+
+        gcs_calc = QtWidgets.QGroupBox("GCS kalkulačka")
+        gcs_form = QtWidgets.QFormLayout()
+        self.gcs_eye_spin = QtWidgets.QSpinBox()
+        self.gcs_eye_spin.setRange(1, 4)
+        self.gcs_eye_spin.setValue(4)
+        self.gcs_verbal_spin = QtWidgets.QSpinBox()
+        self.gcs_verbal_spin.setRange(1, 5)
+        self.gcs_verbal_spin.setValue(5)
+        self.gcs_motor_spin = QtWidgets.QSpinBox()
+        self.gcs_motor_spin.setRange(1, 6)
+        self.gcs_motor_spin.setValue(6)
+        for sp in (self.gcs_eye_spin, self.gcs_verbal_spin, self.gcs_motor_spin):
+            sp.valueChanged.connect(self.update_gcs_from_calc)
+        gcs_form.addRow("Oko:", self.gcs_eye_spin)
+        gcs_form.addRow("Slovo:", self.gcs_verbal_spin)
+        gcs_form.addRow("Pohyb:", self.gcs_motor_spin)
+        self.gcs_total_label = QtWidgets.QLabel("15")
+        gcs_form.addRow("Součet:", self.gcs_total_label)
+        gcs_calc.setLayout(gcs_form)
+        vital_form.addRow(gcs_calc)
+
+        self.vital_desc_label = QtWidgets.QLabel()
+        vital_form.addRow(self.vital_desc_label)
+
+        vital_box.setLayout(vital_form)
+        layout.addWidget(vital_box)
+
         # -------------------- Examination & Therapy --------------------
         exam_box = QtWidgets.QGroupBox("Vyšetření & Terapie")
         exam_form = QtWidgets.QFormLayout()
@@ -97,8 +164,19 @@ class ReportGenerator(QtWidgets.QTabWidget):
             text.setMinimumHeight(60)
             self.fields[section] = text
             exam_form.addRow(section + ":", text)
+
         exam_box.setLayout(exam_form)
         layout.addWidget(exam_box)
+
+        # -------------------- Zdravotnické prostředky --------------------
+        device_box = QtWidgets.QGroupBox("Zdravotnické prostředky")
+        device_layout = QtWidgets.QHBoxLayout()
+        for name in ["Monitor", "Defibrilátor", "Ambuvak", "Glukometr", "Pulsní oxymetr"]:
+            chk = QtWidgets.QCheckBox(name)
+            self.device_checks[name] = chk
+            device_layout.addWidget(chk)
+        device_box.setLayout(device_layout)
+        layout.addWidget(device_box)
 
         # -------------------- Laboratory results --------------------
         lab_box = QtWidgets.QGroupBox("Laboratorní hodnoty")
@@ -117,6 +195,9 @@ class ReportGenerator(QtWidgets.QTabWidget):
         lab_form.addRow("pH:", self.ph_edit)
         self.lab_interpret_label = QtWidgets.QLabel()
         lab_form.addRow(self.lab_interpret_label)
+        self.load_lab_button = QtWidgets.QPushButton("Načíst z CSV/JSON")
+        self.load_lab_button.clicked.connect(self.load_lab_results)
+        lab_form.addRow(self.load_lab_button)
         lab_box.setLayout(lab_form)
         layout.addWidget(lab_box)
 
@@ -336,6 +417,61 @@ class ReportGenerator(QtWidgets.QTabWidget):
             pass
         self.lab_interpret_label.setText("; ".join(msgs))
 
+    def load_lab_results(self) -> None:
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Načíst laboratorní výsledky",
+            filter="Data files (*.csv *.json)"
+        )
+        if not path:
+            return
+        try:
+            if path.lower().endswith(".json"):
+                import json
+                with open(path, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+            else:
+                import csv
+                with open(path, newline="", encoding="utf-8") as fh:
+                    reader = csv.DictReader(fh)
+                    data = next(reader)
+        except Exception:
+            QtWidgets.QMessageBox.warning(self, "Chyba", "Nelze načíst soubor")
+            return
+        self.crp_edit.setText(str(data.get("CRP", "")))
+        self.glucose_edit.setText(str(data.get("Glykémie", data.get("Glucose", ""))))
+        self.lactate_edit.setText(str(data.get("Laktát", "")))
+        self.ph_edit.setText(str(data.get("pH", "")))
+        self.update_lab_interpretation()
+
+    def update_vitals_interpretation(self) -> None:
+        msgs: list[str] = []
+        try:
+            spo = float(self.spo2_edit.text().replace(',', '.'))
+            if spo < 90:
+                msgs.append("Saturace nízká")
+                self.spo2_edit.setStyleSheet("background-color: salmon")
+            else:
+                self.spo2_edit.setStyleSheet("")
+        except ValueError:
+            self.spo2_edit.setStyleSheet("")
+        try:
+            hr = float(self.hr_edit.text().replace(',', '.'))
+            if hr > 100:
+                msgs.append("Tepová frekvence zvýšená")
+                self.hr_edit.setStyleSheet("background-color: salmon")
+            else:
+                self.hr_edit.setStyleSheet("")
+        except ValueError:
+            self.hr_edit.setStyleSheet("")
+        self.current_vital_desc = "; ".join(msgs)
+        self.vital_desc_label.setText(self.current_vital_desc)
+
+    def update_gcs_from_calc(self) -> None:
+        total = self.gcs_eye_spin.value() + self.gcs_verbal_spin.value() + self.gcs_motor_spin.value()
+        self.gcs_spin.setValue(total)
+        self.gcs_total_label.setText(str(total))
+
     def update_toxicology_interpretation(self) -> None:
         substance = self.tox_substance.currentText().lower()
         symptoms = self.tox_symptoms.toPlainText().lower()
@@ -417,6 +553,15 @@ class ReportGenerator(QtWidgets.QTabWidget):
         examination = self.fields[EXAM_SECTIONS[0]].toPlainText().strip() or "..."
         therapy = self.fields[EXAM_SECTIONS[1]].toPlainText().strip() or "..."
 
+        vitals = {
+            "TK": f"{self.bp_sys_edit.text()}/{self.bp_dia_edit.text()}",
+            "TF": self.hr_edit.text(),
+            "SpO2": self.spo2_edit.text(),
+            "TT": self.temp_edit.text(),
+            "RF": self.resp_edit.text(),
+            "GCS": str(self.gcs_spin.value()),
+        }
+
         data = {
             "diagnosis": diag,
             "mkn": mkn,
@@ -424,6 +569,7 @@ class ReportGenerator(QtWidgets.QTabWidget):
             "price": price,
             "anamnesis": anam,
             "status": status,
+            "vitals": {"values": vitals, "desc": self.current_vital_desc},
             "examination": examination,
             "therapy": therapy,
         }
